@@ -105,6 +105,7 @@ def search_manager_data_mysql(
             base_sql = """
             SELECT
               n.id AS shop_id,
+              n.type, n.verification_method,
               n.gu, n.dong, n.jibun, n.ho,
               n.curr_floor, n.total_floor,
               n.deposit, n.monthly,
@@ -316,6 +317,7 @@ def search_manager_data_supabase(
             # Supabase에서 naver_shop 조회 (조인 없이)
             query = supabase.table('naver_shop').select("""
                 id,
+                type, verification_method,
                 gu, dong, jibun, ho,
                 curr_floor, total_floor,
                 deposit, monthly,
@@ -847,11 +849,12 @@ def get_naver_shop_mysql():
         # 컬럼 목록 명시적 지정 권장
         sql = """
         SELECT
-          id, gu, dong, jibun, ho, curr_floor, total_floor, deposit, monthly,
+          id, type, verification_method,
+          gu, dong, jibun, ho, curr_floor, total_floor, deposit, monthly,
           manage_fee, premium, current_use, area, rooms, baths, building_usage, 
           lat, lng, naver_property_no, serve_property_no, approval_date, memo, 
           manager, photo_path, owner_name, owner_relation, owner_phone, 
-          lessee_phone, ad_start_date, ad_end_date, parking, status_cd # parking, status_cd 추가
+          lessee_phone, ad_start_date, ad_end_date, parking, status_cd # type, verification_method 추가
         FROM naver_shop
         ORDER BY id ASC
         """
@@ -942,12 +945,13 @@ def search_naver_shop_mysql(
 
         base_sql = """
         SELECT
-          n.id, n.gu, n.dong, n.jibun, n.ho, n.curr_floor, n.total_floor,
+          n.id, n.type, n.verification_method,
+          n.gu, n.dong, n.jibun, n.ho, n.curr_floor, n.total_floor,
           n.deposit, n.monthly, n.manage_fee, n.premium, n.current_use, n.area,
           n.rooms, n.baths, n.building_usage, n.naver_property_no, n.serve_property_no,
           n.approval_date, n.memo, n.photo_path, n.owner_name, n.owner_relation,
           n.owner_phone, n.lessee_phone, n.ad_start_date, n.ad_end_date, 
-          n.lat, n.lng, n.parking, n.manager, # lat, lng, parking, manager 추가
+          n.lat, n.lng, n.parking, n.manager, # type, verification_method 추가
           c.check_memo
         FROM naver_shop n
         LEFT JOIN naver_shop_check_confirm c ON n.id = c.property_id
@@ -1057,7 +1061,8 @@ def search_naver_shop_supabase(
         
         # 기본 쿼리 - naver_shop (조인 없이)
         query = supabase.table('naver_shop').select("""
-            id, gu, dong, jibun, ho, curr_floor, total_floor,
+            id, type, verification_method,
+            gu, dong, jibun, ho, curr_floor, total_floor,
             deposit, monthly, manage_fee, premium, current_use, area,
             rooms, baths, building_usage, naver_property_no, serve_property_no,
             approval_date, memo, photo_path, owner_name, owner_relation,
