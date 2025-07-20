@@ -153,12 +153,12 @@ class ManagerCheckTab(QObject, ManagerDataMixin, ManagerUIMixin, ManagerTableMix
 
         # 3) 테이블(Model + View) - UI 간소화: 필요없는 필드 제거
         self.manager_source_model = QtGui.QStandardItemModel()
-        # 불필요한 필드 제거 ('호', '현재업종', '용도' 등)
+        # 타입 컬럼 추가하여 헤더 일치
         headers = [
-            "주소", "층", "보증금/월세", "관리비",
-            "권리금", "평수", "연락처",
+            "타입", "주소", "호", "층", "보증금/월세", "관리비",
+            "권리금", "현업종", "평수", "연락처",
             "매물번호", "제목", "매칭업종", "확인메모", "광고등록일",
-            "주차대수", "사용승인일", "방/화장실",
+            "주차대수", "용도", "사용승인일", "방/화장실",
             "사진경로", "소유자명", "관계"
         ]
         self.manager_source_model.setColumnCount(len(headers))

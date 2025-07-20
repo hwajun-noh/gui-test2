@@ -7,6 +7,34 @@ logger = logging.getLogger(__name__)
 class ManagerTableMixin:
     """ManagerCheckTab의 테이블 데이터 관련 메서드를 관리하는 Mixin 클래스"""
     
+    def format_type_string(self, type_value, verification_method):
+        """
+        type과 verification_method를 조합하여 타입 문자열 생성
+        
+        Args:
+            type_value: "상가" 또는 "사무실"
+            verification_method: "NDOC1", "OWNER", "SITE" 등
+            
+        Returns:
+            str: 조합된 타입 문자열 (예: "상가 집주인", "사무실 현장", "상가")
+        """
+        if not type_value:
+            return ""
+            
+        # verification_method 매핑
+        verification_map = {
+            "NDOC1": "집주인",
+            "OWNER": "집주인", 
+            "SITE": "현장"
+        }
+        
+        verification_text = verification_map.get(verification_method, "")
+        
+        if verification_text:
+            return f"{type_value} {verification_text}"
+        else:
+            return type_value
+    
     def populate_check_manager_table(self, rows, append=False):
         """Populates the QTableView with data."""
         # Logic from main_app_part5/populate_check_manager_table
@@ -40,8 +68,8 @@ class ManagerTableMixin:
                 self.logger.debug(f"테이블 헤더: {headers}")
             except AttributeError as e:
                 self.logger.warning(f"헤더 가져오기 실패: {e}")
-                # 기본 헤더 설정
-                headers = ["주소","호","층","보증금/월세","관리비",
+                # 기본 헤더 설정 (타입 컬럼 추가)
+                headers = ["타입","주소","호","층","보증금/월세","관리비",
                     "권리금","현업종","평수","연락처",
                     "매물번호","제목","매칭업종","확인메모","광고등록일",
                     "주차대수","용도","사용승인일","방/화장실",
@@ -52,7 +80,8 @@ class ManagerTableMixin:
                  
             # 열 인덱스 확인
             header_map = {text: idx for idx, text in enumerate(headers)} 
-            col_addr_idx = header_map.get("주소", 0)
+            col_type_idx = header_map.get("타입", -1)
+            col_addr_idx = header_map.get("주소", 1)
             col_ho_idx = header_map.get("호", -1)
             col_floor_idx = header_map.get("층", -1)
             col_price_idx = header_map.get("보증금/월세", -1)
@@ -109,7 +138,15 @@ class ManagerTableMixin:
                         if i == 0 or i == len(batch_rows) - 1:
                             self.logger.debug(f"행 {idx} 데이터: addr={addr_str}, shop_id={shop_id}")
                         
-                        # 기본 열은 항상 있어야 함
+                        # 타입 컬럼 먼저 설정
+                        if col_type_idx != -1:
+                            type_value = row.get("type", "")
+                            verification_method = row.get("verification_method", "")
+                            type_string = self.format_type_string(type_value, verification_method)
+                            item_type = QtGui.QStandardItem(type_string)
+                            model.setItem(idx, col_type_idx, item_type)
+                        
+                        # 주소 컬럼 설정
                         if col_addr_idx != -1:
                             item_addr = QtGui.QStandardItem(addr_str)
                             item_addr.setData("네이버", QtCore.Qt.UserRole + 2) # Source indication
@@ -229,7 +266,8 @@ class ManagerTableMixin:
             headers = []
             
         header_map = {text: idx for idx, text in enumerate(headers)} 
-        col_addr_idx = header_map.get("주소", 0)
+        col_type_idx = header_map.get("타입", -1)
+        col_addr_idx = header_map.get("주소", 1)
         # 다른 열 인덱스 가져오기
         col_ho_idx = header_map.get("호", -1)
         col_floor_idx = header_map.get("층", -1)
@@ -261,6 +299,15 @@ class ManagerTableMixin:
             serve_no = row.get("serve_property_no","")
             addr_str = (row.get("dong","") + " " + row.get("jibun","")).strip()
             
+            # 타입 컬럼 먼저 설정
+            if col_type_idx != -1:
+                type_value = row.get("type", "")
+                verification_method = row.get("verification_method", "")
+                type_string = self.format_type_string(type_value, verification_method)
+                item_type = QtGui.QStandardItem(type_string)
+                model.setItem(idx, col_type_idx, item_type)
+            
+            # 주소 컬럼 설정
             if col_addr_idx != -1:
                 item_addr = QtGui.QStandardItem(addr_str)
                 item_addr.setData("네이버", QtCore.Qt.UserRole + 2) # Source indication
@@ -343,7 +390,11 @@ class ManagerTableMixin:
          # Helper moved from main_app_part9
          model = self.manager_source_model
          row_count = model.rowCount()
-         col_addr_idx = 0 # Assuming address/ID is column 0
+         # 헤더에서 주소 컬럼 인덱스 찾기
+         headers = [model.horizontalHeaderItem(j).text() if model.horizontalHeaderItem(j) else f"col_{j}" 
+                   for j in range(model.columnCount())]
+         header_map = {text: idx for idx, text in enumerate(headers)}
+         col_addr_idx = header_map.get("주소", 1)  # 주소 컬럼 인덱스
          for r in range(row_count):
              item_0 = model.item(r, col_addr_idx)
              if item_0:
@@ -358,7 +409,11 @@ class ManagerTableMixin:
         model = self.manager_source_model
         view = self.check_manager_view
         row_count = model.rowCount()
-        col_addr_idx = 0 # Assuming address/ID is column 0
+        # 헤더에서 주소 컬럼 인덱스 찾기
+        headers = [model.horizontalHeaderItem(j).text() if model.horizontalHeaderItem(j) else f"col_{j}" 
+                  for j in range(model.columnCount())]
+        header_map = {text: idx for idx, text in enumerate(headers)}
+        col_addr_idx = header_map.get("주소", 1)  # 주소 컬럼 인덱스
         for r in range(row_count):
             item_0 = model.item(r, col_addr_idx)
             if item_0:
@@ -416,7 +471,7 @@ class ManagerTableMixin:
         headers = [model.horizontalHeaderItem(j).text() if model.horizontalHeaderItem(j) else f"col_{j}" 
                    for j in range(model.columnCount())]
         header_map = {text: idx for idx, text in enumerate(headers)} 
-        col_addr_idx = header_map.get("주소", -1)
+        col_addr_idx = header_map.get("주소", 1)
         col_area_idx = header_map.get("평수", -1)
         col_price_idx = header_map.get("보증금/월세", -1)
         col_biz_idx = header_map.get("매칭업종", -1)
@@ -427,7 +482,7 @@ class ManagerTableMixin:
         col_current_use_idx = header_map.get("현업종", -1)
 
         for r in range(row_count):
-            item_0 = model.item(r, col_addr_idx if col_addr_idx != -1 else 0) # Base on Address col
+            item_0 = model.item(r, col_addr_idx if col_addr_idx != -1 else 1) # Base on Address col
             if not item_0: continue
 
             shop_id = item_0.data(QtCore.Qt.UserRole+3) or None

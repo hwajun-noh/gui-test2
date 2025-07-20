@@ -32,14 +32,11 @@ def copy_to_mylist(payload: CopyToMyListPayload):
         "네이버": "mylist_shop"
     }
 
-    conn = None
-    cursor = None
     inserted_list = []
     errors = []
 
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        supabase = get_supabase_client()
 
         for obj in items:
             sid = obj.id
@@ -55,12 +52,12 @@ def copy_to_mylist(payload: CopyToMyListPayload):
 
             try:
                 # 1. 원본 데이터 조회
-                sql_sel = f"SELECT * FROM `{source_table}` WHERE id=%s"
-                cursor.execute(sql_sel, (sid,))
-                row = cursor.fetchone()
-                if not row:
+                result = supabase.table(source_table).select("*").eq("id", sid).execute()
+                if not result.data:
                     errors.append(f"ID={sid}, 출처 '{s_}' 원본 없음")
                     continue
+                
+                row = result.data[0]
                 
                 # 2. 대상 테이블에 맞게 데이터 준비
                 insert_data = dict(row) # 원본 복사
@@ -89,7 +86,7 @@ def copy_to_mylist(payload: CopyToMyListPayload):
                             "naver_property_no", "serve_property_no", "approval_date", 
                             "memo", "manager", "photo_path", "owner_name", "owner_relation", 
                             "owner_phone", "lessee_phone", "ad_start_date", "ad_end_date", 
-                            "lat", "lng", "status_cd", "re_ad_yn"
+                            "lat", "lng", "status_cd", "re_ad_yn", "type", "verification_method"
                         ]
                         for col in shop_cols:
                              if col not in insert_data:
@@ -100,49 +97,40 @@ def copy_to_mylist(payload: CopyToMyListPayload):
                                       insert_data[col] = 0.0
                                  elif col in ["approval_date", "ad_start_date", "ad_end_date"]:
                                       insert_data[col] = None
+                                 elif col in ["type", "verification_method"]:
+                                      insert_data[col] = ""  # Supabase에서는 이 컬럼들이 존재
                                  else:
                                       insert_data[col] = ""
                                       
                 # 3. 대상 테이블에 INSERT 전 None 값 처리 추가
-                if target_table == 'mylist_shop': # mylist_shop 테이블에만 해당 컬럼 존재 가정
+                if target_table == 'mylist_shop':
                     if insert_data.get("naver_property_no") is None:
                         insert_data["naver_property_no"] = ""
                     if insert_data.get("serve_property_no") is None:
                         insert_data["serve_property_no"] = ""
                     # 값이 NULL이거나 빈 문자열인 경우에만 기본값으로 대체
                     if "manage_fee" in insert_data and (insert_data["manage_fee"] is None or insert_data["manage_fee"] == ""):
-                        insert_data["manage_fee"] = 0  # 또는 다른 적절한 기본값
+                        insert_data["manage_fee"] = "0"  # Supabase에서는 문자열로
                     if "premium" in insert_data and (insert_data["premium"] is None or insert_data["premium"] == ""):
-                        insert_data["premium"] = 0  # 또는 다른 적절한 기본값
+                        insert_data["premium"] = "0"
                 # 원룸 테이블에도 관련 필드가 있으면 처리
                 elif target_table == 'mylist_oneroom':
                     # 원룸 테이블에서는 manage_fee와 password(권리금) 필드가 있다면 null로 설정
                     if "manage_fee" in insert_data and (insert_data["manage_fee"] is None or insert_data["manage_fee"] == ""):
-                        insert_data["manage_fee"] = 0  # 또는 다른 적절한 기본값
-                    if "password" in insert_data and (insert_data["password"] is None or insert_data["password"] == ""):  # 원룸에서는 password가 권리금 역할
-                        insert_data["password"] = 0  # 또는 다른 적절한 기본값
+                        insert_data["manage_fee"] = "0"
+                    if "password" in insert_data and (insert_data["password"] is None or insert_data["password"] == ""):
+                        insert_data["password"] = "0"
 
-                cols = insert_data.keys()
-                vals = list(insert_data.values()) # .values()는 뷰 객체이므로 리스트로 변환
-                
-                # 여기서는 모든 키가 대상 테이블에 존재한다고 가정
-                cols_str = ",".join([f"`{c}`" for c in cols])
-                placeholders = ",".join(["%s"] * len(vals))
-                sql_ins = f"INSERT INTO `{target_table}` ({cols_str}) VALUES ({placeholders})"
-                
-                cursor.execute(sql_ins, tuple(vals))
-                new_id = cursor.lastrowid
+                # 4. Supabase에 INSERT
+                insert_result = supabase.table(target_table).insert(insert_data).execute()
+                new_id = insert_result.data[0]['id']
                 inserted_list.append((sid, s_, new_id))
                 logger.debug(f"Copied item from {s_}(ID:{sid}) to {target_table}(ID:{new_id}) for manager '{manager}'")
 
-            except mysql.Error as db_err:
-                errors.append(f"ID={sid}, 출처 '{s_}' 처리 중 DB 오류: {db_err}")
-                conn.rollback() # 개별 항목 오류 시 롤백하고 계속 진행 (선택적)
             except Exception as ex2:
                 errors.append(f"ID={sid}, 출처 '{s_}' 처리 중 예외 발생: {ex2}")
-                conn.rollback()
+                logger.error(f"Copy to mylist item error: {ex2}", exc_info=True)
 
-        conn.commit() # 모든 항목 처리 후 최종 커밋
         logger.info(f"Copy to mylist completed for manager '{manager}'. Inserted: {len(inserted_list)}, Errors: {len(errors)}")
         return {
             "status": "ok",
@@ -150,17 +138,9 @@ def copy_to_mylist(payload: CopyToMyListPayload):
             "errors": errors
         }
 
-    except mysql.Error as ex:
-        logger.error(f"Copy to mylist main DB error: {ex}")
-        if conn: conn.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {ex}")
     except Exception as ex:
         logger.error(f"Copy to mylist unexpected error: {ex}", exc_info=True)
-        if conn: conn.rollback()
         raise HTTPException(status_code=500, detail=f"Server error: {ex}")
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
 
 # 상단 테이블용: 전체 mylist_shop 데이터 (manager, role 기반)
 @router.get("/get_all_mylist_shop_data")
@@ -342,8 +322,8 @@ def update_mylist_oneroom_items(payload: dict = Body(...)):
               in_date, `password`, rooms, baths, `options`, owner_phone, building_usage,
               naver_property_no, serve_property_no, approval_date, memo, manager,
               photo_path, owner_name, owner_relation, ad_end_date, lat, lng,
-              parking, area, status_cd
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+              parking, area, status_cd, type, verification_method
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """
             for row_ in added_list:
                 temp_id = row_.get("temp_id")
@@ -359,9 +339,12 @@ def update_mylist_oneroom_items(payload: dict = Body(...)):
                 adp=row_.get("approval_date","").strip();adp_d=adp if adp else None;
                 ade=row_.get("ad_end_date","").strip();ade_d=ade if ade else None;
                 
+                type_val = row_.get("type", "")
+                verification_method_val = row_.get("verification_method", "")
+                
                 vals = (
                     gu_val,dong,jibun,ho,cf,tf,dep,mon,mf,ind,pwd,rms,bth,opts,oph,bus,nav,srv,
-                    adp_d,memo,manager,pp,onm,orel,ade_d,lat,lng,pk,area,scd
+                    adp_d,memo,manager,pp,onm,orel,ade_d,lat,lng,pk,area,scd,type_val,verification_method_val
                 )
                 try:
                     cursor.execute(sql_insert, vals)
@@ -396,7 +379,8 @@ def update_mylist_oneroom_items(payload: dict = Body(...)):
                 "gu","dong","jibun","ho","curr_floor","total_floor","deposit","monthly","manage_fee",
                 "in_date","password","rooms","baths","options","owner_phone","building_usage",
                 "naver_property_no","serve_property_no","approval_date","memo","photo_path",
-                "owner_name","owner_relation","ad_end_date","lat","lng","parking","area","status_cd"
+                "owner_name","owner_relation","ad_end_date","lat","lng","parking","area","status_cd",
+                "type","verification_method"
             ]
             for upd in updated_list:
                 row_id = upd.get("id")
@@ -475,8 +459,8 @@ def update_mylist_shop_items(payload: dict = Body(...)):
               premium, current_use, area, rooms, baths, building_usage, parking,
               naver_property_no, serve_property_no, approval_date, memo, manager,
               photo_path, owner_name, owner_relation, owner_phone, lessee_phone,
-              ad_end_date, lat, lng, status_cd, re_ad_yn
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+              ad_end_date, lat, lng, status_cd, re_ad_yn, type, verification_method
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """
             for row_ in added_list:
                 temp_id = row_.get("temp_id", -99)
@@ -491,9 +475,12 @@ def update_mylist_shop_items(payload: dict = Body(...)):
                 apd_s=row_.get("approval_date","").strip();apd=apd_s if apd_s else None;
                 ade_s=row_.get("ad_end_date","").strip();ade=ade_s if ade_s else None;
                 
+                type_val = row_.get("type", "")
+                verification_method_val = row_.get("verification_method", "")
+                
                 vals = (
                     gu,dn,jb,ho,cf,tf,dp,mn,mf,pm,cu,ar,rms,bts,bu,pk,nav,srv,apd,mm,manager,pp,
-                    onm,orl,oph,lph,ade,lat,lng,scd,ryn
+                    onm,orl,oph,lph,ade,lat,lng,scd,ryn,type_val,verification_method_val
                 )
                 try:
                     cursor.execute(sql_insert, vals)
@@ -546,7 +533,7 @@ def update_mylist_shop_items(payload: dict = Body(...)):
                 "premium", "current_use", "area", "rooms", "baths", "building_usage", "parking",
                 "naver_property_no", "serve_property_no", "approval_date", "memo", "photo_path",
                 "owner_name", "owner_relation", "owner_phone", "lessee_phone", "ad_end_date",
-                "lat", "lng", "status_cd", "re_ad_yn", "manager"
+                "lat", "lng", "status_cd", "re_ad_yn", "manager", "type", "verification_method"
             ]
             for row_ in updated_list:
                 rid = row_.get("id")
@@ -626,8 +613,12 @@ def get_mylist_oneroom_data_supabase(manager: str = "", role: str = "manager"):
     try:
         supabase = get_supabase_client()
         
-        # 기본 쿼리
-        query = supabase.table('mylist_oneroom').select('*')
+        # 기본 쿼리 - 새로운 컬럼 포함
+        query = supabase.table('mylist_oneroom').select("""
+            *,
+            type,
+            verification_method
+        """)
         
         # 권한 확인: admin이 아니면 manager 필터 적용
         if role.lower() != "admin":
@@ -657,8 +648,12 @@ def get_mylist_shop_data_supabase(addresses: list = None):
         if not addresses:
             return {"status": "ok", "data": []}
         
-        # 주소별 필터링을 위한 조건 생성
-        query = supabase.table('mylist_shop').select('*')
+        # 주소별 필터링을 위한 조건 생성 - 새로운 컬럼 포함
+        query = supabase.table('mylist_shop').select("""
+            *,
+            type,
+            verification_method
+        """)
         
         # CONCAT(dong, ' ', jibun) IN (addresses) 와 동일한 필터링
         # Supabase에서는 여러 조건을 OR로 연결
@@ -685,8 +680,12 @@ def get_all_mylist_shop_data_supabase(manager: str = "", role: str = "manager"):
     try:
         supabase = get_supabase_client()
         
-        # 기본 쿼리
-        query = supabase.table('mylist_shop').select('*')
+        # 기본 쿼리 - 새로운 컬럼 포함
+        query = supabase.table('mylist_shop').select("""
+            *,
+            type,
+            verification_method
+        """)
         
         # 권한 확인: admin이 아니면 manager 필터 적용
         if role.lower() != "admin":
@@ -730,13 +729,21 @@ async def get_mylist_shop_data_supabase_post(request: Request):
                     dong = parts[0]
                     jibun = parts[1]
                     
-                    # 동과 지번이 모두 일치하는 것을 찾기
-                    query = supabase.table('mylist_shop').select('*').eq('dong', dong).eq('jibun', jibun)
+                    # 동과 지번이 모두 일치하는 것을 찾기 - 새로운 컬럼 포함
+                    query = supabase.table('mylist_shop').select("""
+                        *,
+                        type,
+                        verification_method
+                    """).eq('dong', dong).eq('jibun', jibun)
                     result = query.execute()
                     all_results.extend(result.data)
                 else:
-                    # 동만 있는 경우
-                    query = supabase.table('mylist_shop').select('*').eq('dong', addr)
+                    # 동만 있는 경우 - 새로운 컬럼 포함
+                    query = supabase.table('mylist_shop').select("""
+                        *,
+                        type,
+                        verification_method
+                    """).eq('dong', addr)
                     result = query.execute()
                     all_results.extend(result.data)
                     

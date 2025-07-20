@@ -13,19 +13,25 @@ logger.info(f"Server logging configured to level: {logging.getLevelName(log_leve
 # --- 로깅 설정 끝 ---
 
 # --- .env 파일 로딩 --- 
-if is_pyinstaller_exe():
-    env_file_name = ".env.production"
-else:
-    env_file_name = ".env.development"
-
 # settings.py 파일이 있는 디렉토리
 current_dir = os.path.dirname(os.path.abspath(__file__)) 
-# 현재 디렉토리 아래의 static 폴더 경로 구성
-env_path = os.path.join(current_dir, "static", env_file_name)
 
+# 우선순위: 1) 메인 디렉토리의 .env, 2) static 폴더의 환경별 파일
+main_env_path = os.path.join(current_dir, ".env")
 
-load_dotenv(env_path, override=True)  # override=True 추가로 강제 적용
-logger.info(f"Loaded environment variables from: {env_path}")
+if os.path.exists(main_env_path):
+    load_dotenv(main_env_path, override=True)
+    logger.info(f"Loaded environment variables from: {main_env_path}")
+else:
+    # 기존 방식 fallback
+    if is_pyinstaller_exe():
+        env_file_name = ".env.production"
+    else:
+        env_file_name = ".env.development"
+    
+    env_path = os.path.join(current_dir, "static", env_file_name)
+    load_dotenv(env_path, override=True)
+    logger.info(f"Loaded environment variables from: {env_path}")
 
 # 로드된 환경변수 확인 로그 추가
 shop_env = os.environ.get("USE_SUPABASE_SHOP", "not_found")

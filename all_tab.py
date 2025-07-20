@@ -45,7 +45,7 @@ class AllTab(QObject):
         # Model/View creation
         self.all_tab_model = QtGui.QStandardItemModel()
         headers = [
-            "주소", "호", "층", "보증금/월세", "관리비",
+            "타입", "주소", "호", "층", "보증금/월세", "관리비",
             "권리금", "현업종", "평수", "연락처", "매물번호",
             "제목", "매칭업종", "확인메모","광고종료일",
             "주차대수", "용도", "사용승인일", "방/화장실",
@@ -383,7 +383,30 @@ class AllTab(QObject):
             source = row_dict.get("출처",""); bg_hex = color_map.get(source, "#FFFFFF"); bg_color = QtGui.QColor(bg_hex)
             for j, col_name in enumerate(headers):
                 raw_val = row_dict.get(col_name, ""); cell_val = str(raw_val)
-                if col_name == "매물번호":
+                
+                if col_name == "타입": # 타입 컬럼 처리
+                    type_value = row_dict.get("type", "")
+                    verification_method = row_dict.get("verification_method", "")
+                    
+                    # 타입 매핑 로직 (manager_tabs/table.py와 동일)
+                    verification_map = {
+                        "NDOC1": "집주인",
+                        "OWNER": "집주인", 
+                        "SITE": "현장"
+                    }
+                    verification_text = verification_map.get(verification_method, "")
+                    
+                    if verification_text and type_value:
+                        type_string = f"{type_value} {verification_text}"
+                    elif type_value:
+                        type_string = type_value
+                    else:
+                        type_string = source  # 출처로 fallback
+                    
+                    item_type = QtGui.QStandardItem(type_string)
+                    item_type.setBackground(bg_color)
+                    m.setItem(i, j, item_type)
+                elif col_name == "매물번호":
                     mb_val = row_dict.get("매물번호","").strip()
                     naver_no = (row_dict.get("naver_no") or "").strip()
                     serve_no = (row_dict.get("serve_no") or "").strip()
@@ -423,7 +446,7 @@ class AllTab(QObject):
                     else:
                         fallback_item = QtGui.QStandardItem(mb_val); fallback_item.setBackground(bg_color); m.setItem(i, j, fallback_item)
 
-                elif j == 0: # 주소 열
+                elif col_name == "주소": # 주소 열 (헤더매칭 방식)
                     address_text = cell_val; folder_path = row_dict.get("사진경로","") or ""; rep_img_path = ""
                     if os.path.isdir(folder_path):
                         files = [f for f in os.listdir(folder_path) if f.lower().endswith((".jpg",".jpeg",".png",".gif"))]
@@ -474,7 +497,14 @@ class AllTab(QObject):
     def on_all_tab_clicked(self, index: QtCore.QModelIndex):
         # ... (This entire method needs to be moved here) ...
         if not index.isValid(): return
-        col_memo_idx = 9; col_addr_idx = 0
+        
+        # 헤더매칭으로 컬럼 인덱스 찾기
+        headers = [self.all_tab_model.horizontalHeaderItem(j).text() if self.all_tab_model.horizontalHeaderItem(j) else f"col_{j}" 
+                  for j in range(self.all_tab_model.columnCount())]
+        header_map = {text: idx for idx, text in enumerate(headers)}
+        col_memo_idx = header_map.get("매물번호", 9)  # 기본값 9 (fallback)
+        col_addr_idx = header_map.get("주소", 1)     # 기본값 1 (fallback)
+        
         if index.column() == col_memo_idx:
             item_ = self.all_tab_model.item(index.row(), col_memo_idx)
             if not item_: return
@@ -676,14 +706,21 @@ class AllTab(QObject):
 
         # 행별 (id, source, address) 수집
         row_info_list = []
+        
+        # 헤더매칭으로 주소 컬럼 인덱스 찾기 (ID 정보가 저장된 컬럼)
+        headers = [table_model.horizontalHeaderItem(j).text() if table_model.horizontalHeaderItem(j) else f"col_{j}" 
+                  for j in range(table_model.columnCount())]
+        header_map = {text: idx for idx, text in enumerate(headers)}
+        col_addr_idx = header_map.get("주소", 1)  # 주소 컬럼에 ID 정보가 저장됨
+        
         for r in selected_rows:
-            item_0 = table_model.item(r, 0)
-            if not item_0: 
+            item_addr = table_model.item(r, col_addr_idx)
+            if not item_addr: 
                 continue
                 
-            pid = item_0.data(QtCore.Qt.UserRole + 3)  # ID
-            src = item_0.data(QtCore.Qt.UserRole + 2)  # 출처 ("상가", "원룸", "확인", "추천")
-            addr_str = item_0.text() or ""
+            pid = item_addr.data(QtCore.Qt.UserRole + 3)  # ID
+            src = item_addr.data(QtCore.Qt.UserRole + 2)  # 출처 ("상가", "원룸", "확인", "추천")
+            addr_str = item_addr.text() or ""
             
             if not pid or not src: 
                 print(f"[ERROR] 행 {r}에서 유효한 데이터를 찾을 수 없습니다: ID={pid}, 출처={src}")

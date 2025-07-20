@@ -182,7 +182,13 @@ class ManagerUIMixin:
                  self.parent_app.clear_last_selected_address()
             return
             
-        idx_addr = self.manager_source_model.index(new_row, 0) # Assuming address is col 0
+        # 헤더매칭으로 주소 컬럼 인덱스 찾기
+        headers = [self.manager_source_model.horizontalHeaderItem(j).text() if self.manager_source_model.horizontalHeaderItem(j) else f"col_{j}" 
+                  for j in range(self.manager_source_model.columnCount())]
+        header_map = {text: idx for idx, text in enumerate(headers)}
+        col_addr_idx = header_map.get("주소", 1)  # 기본값 1 (fallback)
+        
+        idx_addr = self.manager_source_model.index(new_row, col_addr_idx)
         addr_str = self.manager_source_model.data(idx_addr, QtCore.Qt.DisplayRole) or ""
 
         # 🚫 중복 요청 방지: 최근 요청한 주소와 동일한 경우 스킵
@@ -254,9 +260,16 @@ class ManagerUIMixin:
         if self.loading_data_flag: return 
         
         row = item.row(); col = item.column()
-        item_0 = self.manager_source_model.item(row, 0)
-        if not item_0: return
-        pk_id = item_0.data(QtCore.Qt.UserRole + 3)
+        
+        # 헤더매칭으로 주소 컬럼 인덱스 찾기 (ID 정보가 저장된 컬럼)
+        headers = [self.manager_source_model.horizontalHeaderItem(j).text() if self.manager_source_model.horizontalHeaderItem(j) else f"col_{j}" 
+                  for j in range(self.manager_source_model.columnCount())]
+        header_map = {text: idx for idx, text in enumerate(headers)}
+        col_addr_idx = header_map.get("주소", 1)  # 주소 컬럼에 ID 정보가 저장됨
+        
+        item_addr = self.manager_source_model.item(row, col_addr_idx)
+        if not item_addr: return
+        pk_id = item_addr.data(QtCore.Qt.UserRole + 3)
         if not pk_id: return
         
         header_item = self.manager_source_model.horizontalHeaderItem(col)
