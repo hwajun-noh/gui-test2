@@ -1,0 +1,236 @@
+<!-- /*new index.html*/ -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>네이버 지도 - 사각형 불러오기 & 좌표 확인</title>
+  <style>
+    html, body {
+      width: 100%; height: 100%;
+      margin: 0;   padding: 0;
+    }
+    #map {
+      width: 100%; height: 100%;
+    }
+    /* 버튼 패널 */
+    .panel {
+      position: absolute;
+      top: 10px; left: 10px;
+      z-index: 9999;
+      background: #fff;
+      border: 1px solid #ccc;
+      padding: 10px;
+      border-radius: 5px;
+    }
+    .panel button {
+      display: block;
+      width: 120px;
+      margin: 5px 0;
+      padding: 6px 10px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+  </style>
+
+  <!-- 네이버 지도 + 드로잉 서브모듈 -->
+  <!-- ※ ncpClientId=YOUR_KEY 로 실제 키를 넣으세요. 아래는 예시 (tyflqyq5uv) -->
+  <script 
+    src="https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=tyflqyq5uv&submodules=drawing&callback=initMap" 
+    defer>
+  </script>
+</head>
+<body>
+<div id="map"></div>
+
+<!-- 버튼 패널 -->
+<div class="panel">
+  <!-- "초기화" 버튼 -->
+  <button id="resetBtn">초기화</button>
+  <!-- "좌표 확인" 버튼 -->
+  <button id="showBtn">좌표 확인</button>
+</div>
+
+<script>
+/*
+  1) 전역 변수
+*/
+var map;              // 지도 객체
+var drawingManager;   // 드로잉 매니저
+
+/*
+  2) 지도 초기화 (콜백)
+  네이버 지도 스크립트에서 &callback=initMap 로 지정했으므로,
+  로드가 끝나면 initMap()을 자동 호출합니다.
+*/
+function initMap() {
+  // (a) 지도 생성 (대전 시청 중심 좌표 예시)
+  map = new naver.maps.Map('map', {
+    center: new naver.maps.LatLng(36.3504, 127.3845), 
+    zoom: 13,
+    zoomControl: true,
+    mapTypeControl: true
+  });
+
+  // (b) 지도 초기화 시점에 DrawingManager 생성
+  naver.maps.Event.once(map, 'init', function() {
+    console.log('지도 init => DrawingManager 세팅');
+
+    drawingManager = new naver.maps.drawing.DrawingManager({
+      map: map,  // 초기 상태 ON
+      drawingControl: [
+        naver.maps.drawing.DrawingMode.RECTANGLE
+      ],
+      drawingControlOptions: {
+        position: naver.maps.Position.TOP_CENTER,
+        style: naver.maps.drawing.DrawingStyle.HORIZONTAL
+      },
+      rectangleOptions: {
+        fillColor: '#ff0000',
+        fillOpacity: 0.4,
+        strokeWeight: 2,
+        strokeColor: '#ff0000'
+      }
+    });
+
+    // 이벤트 로그 (선택사항)
+    naver.maps.Event.addListener(drawingManager, 'drawing_added', function(overlay) {
+      console.log('[drawing_added]', overlay);
+    });
+    naver.maps.Event.addListener(drawingManager, 'drawing_removed', function(overlay) {
+      console.log('[drawing_removed]', overlay);
+    });
+    naver.maps.Event.addListener(drawingManager, 'drawing_selected', function(overlay) {
+      console.log('[drawing_selected]', overlay);
+    });
+  });
+
+  // (c) 버튼에 이벤트 연결
+  document.getElementById('resetBtn').addEventListener('click', onResetRect);
+  document.getElementById('showBtn').addEventListener('click', onShowRectangles);
+}
+
+/*
+  "초기화" 버튼 클릭:
+  => 현재 DrawingManager에 등록된 모든 도형(사각형 등)을 삭제
+*/
+function onResetRect() {
+  if (!drawingManager) {
+    alert("DrawingManager가 아직 준비되지 않았습니다.");
+    return;
+  }
+
+  // 1) 기존 사각형(도형) 전부 삭제
+  var oldDrawings = drawingManager.getDrawings();
+  for (var k in oldDrawings) {
+    drawingManager.removeDrawing(k);
+  }
+  console.log("도형이 모두 삭제되었습니다.");
+}
+
+/*
+  "좌표 확인" 버튼 클릭:
+  => 현재 등록된 사각형(들)의 좌표를
+     [lng1, lat1, lng2, lat2] 형태로 뽑아서 alert/console 출력
+*/
+function onShowRectangles() {
+  if (!drawingManager) return;
+
+  var allOverlays = drawingManager.getDrawings(); 
+  // 구조: { 'rectUser-xxx': naver.maps.Rectangle, ... }
+
+  var results = [];
+  for (var id in allOverlays) {
+    var overlay = allOverlays[id];
+    if (overlay.OVERLAY_TYPE !== 'Rectangle') continue;
+
+    // overlay.getOptions('bounds') => 
+    //   1) 배열 [lng1, lat1, lng2, lat2], 또는
+    //   2) PointBounds(_min, _max)
+    var raw = overlay.getOptions("bounds");
+
+    // 경우별로 처리
+    if (Array.isArray(raw)) {
+      // 이미 [lng1, lat1, lng2, lat2] 형태
+      results.push(raw);
+    } else {
+      // PointBounds => _min={x, y}, _max={x, y}
+      var minPt = raw._min; 
+      var maxPt = raw._max;
+      results.push([
+        minPt.x, // swLng
+        minPt.y, // swLat
+        maxPt.x, // neLng
+        maxPt.y  // neLat
+      ]);
+    }
+  }
+
+  console.log('현재 사각형 목록:', results);
+
+  // 문자열화하여 alert에 표시
+  var strArray = results.map(function(arr) {
+    return arr.join(", ");
+  });
+  alert("현재 사각형들:\n" + JSON.stringify(strArray, null, 2));
+}
+
+/*
+  (★) setRectanglesData(rects)
+     => Python 측에서 runJavaScript("setRectanglesData([...])") 호출 시 사용
+*/
+function setRectanglesData(rects) {
+  console.log("[setRectanglesData] 호출됨:", rects);
+  
+  // 1) 기존 사각형 삭제
+  var oldDrawings = drawingManager.getDrawings();
+  for (var key in oldDrawings) {
+    drawingManager.removeDrawing(key);
+  }
+  
+  // 2) 전달받은 rects 배열([[lng1, lat1, lng2, lat2], ...])로 사각형 생성
+  for (var i=0; i<rects.length; i++) {
+    var arr = rects[i]; // ex) [127.362, 36.336, 127.394, 36.355]
+    var rectOverlay = new naver.maps.Rectangle({
+      map: map,
+      bounds: arr,
+      fillColor: '#ff0000',
+      fillOpacity: 0.4,
+      strokeWeight: 2,
+      strokeColor: '#ff0000'
+    });
+    var rectId = "rectLoad-" + i + "-" + Date.now();
+    drawingManager.addDrawing(rectOverlay, naver.maps.drawing.DrawingMode.RECTANGLE, rectId);
+  }
+  
+  console.log("setRectanglesData 완료, 생성 개수=", rects.length);
+}
+
+/*
+  (★) getRectanglesData()
+     => Python 측에서 runJavaScript("JSON.stringify(getRectanglesData())") 호출 시,
+        현재 사각형 좌표들의 배열을 반환
+*/
+function getRectanglesData() {
+  if (!drawingManager) return [];
+  var allOverlays = drawingManager.getDrawings();
+  var results = [];
+  for (var id in allOverlays) {
+    var overlay = allOverlays[id];
+    if (overlay.OVERLAY_TYPE !== 'Rectangle') continue;
+
+    var raw = overlay.getOptions("bounds");
+    if (Array.isArray(raw)) {
+      results.push(raw);
+    } else {
+      var minPt = raw._min;
+      var maxPt = raw._max;
+      results.push([
+        minPt.x, minPt.y, maxPt.x, maxPt.y
+      ]);
+    }
+  }
+  return results;
+}
+</script>
+</body>
+</html>

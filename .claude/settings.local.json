@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx:*)",
+      "Bash(node:*)",
+      "Bash(dir:*)",
+      "Bash(ls:*)",
+      "mcp__supabase__get_logs",
+      "mcp__supabase__list_tables",
+      "mcp__supabase__execute_sql",
+      "Bash(taskkill:*)",
+      "Bash(cmd /c:*)",
+      "Bash(python:*)",
+      "Bash(powershell:*)",
+      "Bash(grep:*)",
+      "mcp__github__create_repository",
+      "mcp__github__search_repositories",
+      "Bash(where git)",
+      "Bash(git remote add:*)",
+      "Bash(git add:*)",
+      "Bash(git rebase:*)",
+      "Bash(rm:*)",
+      "Bash(git init:*)"
+    ],
+    "deny": []
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "sequential-thinking",
+    "mysql-db",
+    "desktop-commander",
+    "think-mcp-server",
+    "github",
+    "brave-search",
+    "excel",
+    "playwright",
+    "context7",
+    "supabase"
+  ]
+}

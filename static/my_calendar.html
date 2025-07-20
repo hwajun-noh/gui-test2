@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Inline Date Range</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <style>
+    body { margin: 0; padding: 0; }
+    #myCalendar { margin: 10px; }
+  </style>
+</head>
+<body>
+  <div id="myCalendar"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script>
+    let selectedDatesArray = [];
+
+    // (1) 전역 변수로 flatpickr 인스턴스를 담을 fp 선언
+    let fp = null;
+
+    // (2) 페이지 로드 시점에 flatpickr 초기화
+    window.addEventListener('DOMContentLoaded', function() {
+      fp = flatpickr("#myCalendar", {
+        mode: "range",
+        dateFormat: "Y-m-d",
+        inline: true,
+        // onClose -> 사용자가 달력을 닫을 때 값 갱신
+        onClose: function(selDates, dateStr, instance) {
+          selectedDatesArray = selDates.map(d => {
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth()+1).padStart(2,'0');
+            const dd = String(d.getDate()).padStart(2,'0');
+            return `${yyyy}-${mm}-${dd}`;
+          });
+        }
+      });
+    });
+
+    // (3) PyQt에서 날짜 배열을 가져갈 때 사용하는 함수
+    function getSelectedDates() {
+      return selectedDatesArray;
+    }
+
+    // (4) "최근 30일"로 다시 설정하는 함수
+    function setCalendarLast30Days() {
+      if (!fp) return; // 혹시 fp가 초기화 안됐으면 그냥 리턴
+
+      const today = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - 30);  // 30일 전
+
+      // 기존 값 비우고, [start, today] 설정
+      fp.clear();
+      fp.setDate([start, today], true);
+
+      // selectedDatesArray도 갱신
+      selectedDatesArray = [
+        formatDate(start),
+        formatDate(today)
+      ];
+    }
+
+    // (5) 편의 함수를 추가 (날짜->YYYY-MM-DD)
+    function formatDate(dateObj) {
+      const yyyy = dateObj.getFullYear();
+      const mm = String(dateObj.getMonth() + 1).padStart(2,'0');
+      const dd = String(dateObj.getDate()).padStart(2,'0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+  </script>
+</body>
+</html>
